@@ -1,0 +1,13 @@
+services:
+  discord-bot:
+    container_name: 'discord-bot'
+    env_file:
+      - .env
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    logging:
+      driver: 'json-file'
+      options:
+        max-file: '5'
+        max-size: '50m'
