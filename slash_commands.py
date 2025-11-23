@@ -71,21 +71,6 @@ class SlashCommands(commands.Cog):
 
     ###################################################################################
     @app_commands.command(
-        name="add-pool",
-        description="Create a new pool/dataset.",
-    )
-    @app_commands.describe(
-        pool="Name of the pool to create.",
-    )
-    async def add_pool(self, interaction: discord.Interaction, pool: str):
-        """
-        Create a new pool/dataset.
-        Only users of specific roles can create a new pool.
-        """
-        print("TODO: add-pool")
-
-    ###################################################################################
-    @app_commands.command(
         name="delete-prompt",
         description="Delete a prompt (can be approved or unapproved).",
     )

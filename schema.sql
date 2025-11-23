@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS dataset (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pool VARCHAR(256),
+  prompt VARCHAR(256),
+  weight INT,
+  sensitivity CHAR(1) CHECK (sensitivity IN ('S', 'E', 'Q')),
+  flags VARCHAR(1024),
+  approved BOOL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
