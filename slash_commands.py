@@ -4,19 +4,22 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from db import Db
+
 
 class SlashCommands(commands.Cog):
     """
     Commands that can be called as `/<command>`.
     """
 
-    def __init__(self, bot: commands.Bot, approved_roles: List[str]):
+    def __init__(self, bot: commands.Bot, approved_roles: List[str], db: Db):
         """
         :param bot: discord bot
         :param approved_roles: Roles that are allowed to approve prompts
         """
         self.bot = bot
         self.approved_roles = approved_roles
+        self.db = db
 
     ###################################################################################
     @app_commands.command(
@@ -38,19 +41,37 @@ class SlashCommands(commands.Cog):
         sensitivity: str,
         flags: str
     ):
-        # TODO: Store the prompt temporarily in memory?
-        # Or add to the DB and set approved as N.
-        embed = discord.Embed(
-            title="#ID: 1234",
-            description="Prompt Received!",
-            color=discord.Color.blue()
-        )
+        error_msg = None
+        uid = -1
+        # Perform some pre-checks
+        if sensitivity not in ['S', 'E', 'Q']:
+            error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
+        else:
+            uid = self.db.add_prompt(pool, prompt, weight, sensitivity, flags)
+            if uid < 0:
+                error_msg = "DB failed to add prompt."
+
+        embed = None
+        if error_msg is not None:
+            embed = discord.Embed(
+                title = "Error Encountered!",
+                description = error_msg,
+                color = discord.Color.red()
+            )
+            embed.set_footer(text="Error encountered.")
+        else:
+            embed = discord.Embed(
+                title=f"#ID: {uid}",
+                description="Prompt Received!",
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="Prompt will be added to pool after approval.")
         embed.add_field(name="Pool", value=pool, inline=True)
         embed.add_field(name="Prompt", value=prompt, inline=True)
         embed.add_field(name="Weight", value=weight, inline=True)
         embed.add_field(name="Sensitivity", value=sensitivity, inline=True)
         embed.add_field(name="Flags", value=flags, inline=False)
-        embed.set_footer(text="Prompt will be added to pool after approval.")
+
         await interaction.response.send_message(embed=embed)
 
     ###################################################################################
@@ -114,7 +135,15 @@ class SlashCommands(commands.Cog):
         """
         Given a pool name, show all the current entries in this pool.
         """
-        print("Show Pool: Unimplemented!")
+        entries = self.db.show_pool(pool)
+        if len(entries) == 0:
+            await interaction.response.send_message("No such pool!")
+        output = f'[Pool: {pool}]\n'
+        for entry in entries:
+            output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
+            output += f"Weight: {entry.weight}, {entry.sensitivity}, {entry.flags}\n"
+        # TODO: Return it as text file instead, as the pool might be very huge and exceed msg limit.
+        await interaction.response.send_message(output)
 
     ###################################################################################
     @app_commands.command(
@@ -125,7 +154,8 @@ class SlashCommands(commands.Cog):
         """
         Show all the available pools.
         """
-        print("List Pools: Unimplemented!")
+        pools = self.db.get_pools()
+        await interaction.response.send_message(','.join(pools))
 
     ###################################################################################
     @app_commands.command(
@@ -136,4 +166,9 @@ class SlashCommands(commands.Cog):
         """
         Show all the current prompts that are pending approval.
         """
-        print("Pending Prompts: Unimplemented!")
+        pending_prompts = self.db.get_pending_prompts()
+        output = ''
+        for entry in pending_prompts:
+            output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
+            output += f"Weight: {entry.weight}, {entry.sensitivity}, {entry.flags}\n"
+        await interaction.response.send_message(output)
