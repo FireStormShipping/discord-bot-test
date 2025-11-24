@@ -1,9 +1,16 @@
+networks:
+  app:
+    driver: bridge
+
 services:
   discord-bot:
     container_name: 'discord-bot'
+    restart: unless-stopped
+    depends_on:
+      - mariadb
     env_file:
       - .env
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     logging:
@@ -11,3 +18,25 @@ services:
       options:
         max-file: '5'
         max-size: '50m'
+    networks:
+      - app
+
+  mariadb:
+    container_name: 'mariadb'
+    image: mariadb:11.8
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./db:/var/lib/mysql
+    expose:
+      - 3306
+    ports:
+      - 3306:3306
+    logging:
+      driver: 'json-file'
+      options:
+        max-file: '5'
+        max-size: '50m'
+    networks:
+      - app

@@ -7,13 +7,23 @@ import mariadb
 logger = logging.getLogger("firestorm_bot")
 
 class DatasetEntry(object):
-    def __init__(self, uid: int, pool: str, prompt: str, weight: int, sensitivity: str, flags: str):
+    def __init__(
+            self,
+            uid: int,
+            pool: str,
+            prompt: str,
+            weight: int,
+            sensitivity: str,
+            flags: str,
+            approved: bool = True
+    ):
         self.uid = uid
         self.pool = pool
         self.prompt = prompt
         self.weight = weight
         self.sensitivity = sensitivity
         self.flags = flags
+        self.approved = approved
 
 class Db(object):
     """
@@ -46,6 +56,9 @@ class Db(object):
                 self.cur.execute(sql_script)
                 conn.commit()
                 logger.info("Database successfully migrated.")
+        except mariadb.OperationalError as e:
+            logger.error(f"DB connection error: {e}")
+            sys.exit(1)
         except mariadb.Error as e:
             logger.error(f"DB error: {e}")
             sys.exit(1)
@@ -69,7 +82,7 @@ class Db(object):
             logger.warning(f"Error adding prompt: {e}")
             return -1
 
-    def approve_prompt(self, uid: int):
+    def approve_prompt(self, uid: int) -> bool:
         """
         Assumptions: user privilege has already been checked beforehand.
         """
@@ -89,7 +102,7 @@ class Db(object):
         weight: Optional[int],
         sensitivity: Optional[str],
         flags: Optional[str]
-    ):
+    ) -> Optional[DatasetEntry]:
         """
         If privileged user, allow them to edit from dataset arbitrarily.
         If non-privileged user, only allow editing of unapproved entries.
@@ -97,11 +110,10 @@ class Db(object):
         if not is_privileged_role:
             try:
                 self.cur.execute("SELECT approved from dataset where id = ?", (uid,))
-                for row in self.cur:
-                    approved = row[0]
-                    # If previously approved, reject.
-                    if approved == 1:
-                        raise PermissionError("Not privileged enough")
+                approved = self.cur.fetchone()[0]
+                # If previously approved, reject.
+                if approved == 1:
+                    raise PermissionError("Not privileged enough")
             except mariadb.Error as e:
                 logger.warning(f"Error retrieving {uid}: {e}")
         try:
@@ -114,12 +126,17 @@ class Db(object):
             if flags:
                 self.cur.execute("UPDATE dataset SET flags = ? WHERE id = ?", (flags, uid,))
             self.conn.commit()
-            return True
+
+            # Return the new updated entry
+            self.cur.execute("SELECT * FROM dataset WHERE id = ?", (uid,))
+            row = self.cur.fetchone()
+            entry = DatasetEntry(row[0], row[1], row[2], row[3], row[4], row[5], row[6] == 1)
+            return entry
         except mariadb.Error as e:
             logger.warning(f"Failed to delete {id}: {e}")
-            return False
+            return None
 
-    def delete_prompt(self, uid: int, is_privileged_role: bool):
+    def delete_prompt(self, uid: int, is_privileged_role: bool) -> bool:
         """
         If privileged user, allow them to delete from dataset arbitrarily.
         If non-privileged user, only allow deleting of unapproved entries.
@@ -127,11 +144,10 @@ class Db(object):
         if not is_privileged_role:
             try:
                 self.cur.execute("SELECT approved from dataset where id = ?", (uid,))
-                for row in self.cur:
-                    approved = row[0]
-                    # If previously approved, reject.
-                    if approved == 1:
-                        raise PermissionError("Not privileged enough")
+                approved = self.cur.fetchone()[0]
+                # If previously approved, reject.
+                if approved == 1:
+                    raise PermissionError("Not privileged enough")
             except mariadb.Error as e:
                 logger.warning(f"Error retrieving {uid}: {e}")
         try:
