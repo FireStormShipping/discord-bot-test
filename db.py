@@ -1,0 +1,191 @@
+import logging
+import sys
+from typing import List, Optional
+
+import mariadb
+
+logger = logging.getLogger("firestorm_bot")
+
+class DatasetEntry(object):
+    def __init__(
+            self,
+            uid: int,
+            pool: str,
+            prompt: str,
+            weight: int,
+            sensitivity: str,
+            flags: str,
+            approved: bool = True
+    ):
+        self.uid = uid
+        self.pool = pool
+        self.prompt = prompt
+        self.weight = weight
+        self.sensitivity = sensitivity
+        self.flags = flags
+        self.approved = approved
+
+class Db(object):
+    """
+    Wrapper around Database Operations
+    """
+    def __init__(self,
+        password: str,
+        host: str = "127.0.0.1",
+        user: str = "root",
+        port: int = 3306,
+        database: str = "bingo-dataset"
+    ):
+        try:
+            conn = mariadb.connect(
+                user=user,
+                password=password,
+                host=host,
+                port=port,
+                database=database,
+                reconnect=True
+
+            )
+            self.conn = conn
+            self.cur = conn.cursor()
+            logger.info(f"Successfully connected to {database}!")
+
+            # Run migrations/database initializations
+            with open('schema.sql', 'r', encoding='utf-8') as f:
+                sql_script = f.read()
+                self.cur.execute(sql_script)
+                conn.commit()
+                logger.info("Database successfully migrated.")
+        except mariadb.OperationalError as e:
+            logger.error(f"DB connection error: {e}")
+            sys.exit(1)
+        except mariadb.Error as e:
+            logger.error(f"DB error: {e}")
+            sys.exit(1)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cur.close()
+        self.conn.close()
+
+    def add_prompt(self, pool: str, prompt: str, weight: int, sensitivity: str, flags: str) -> int:
+        """
+        Returns ID of the last row inserted.
+        """
+        try:
+            self.cur.execute(
+                "INSERT INTO dataset (pool, prompt, weight, sensitivity, flags, approved) VALUES (?, ?, ?, ?, ?, ?)",
+                (pool, prompt, weight, sensitivity, flags, False)
+            )
+            self.conn.commit()
+            return self.cur.lastrowid
+        except mariadb.Error as e:
+            logger.warning(f"Error adding prompt: {e}")
+            return -1
+
+    def approve_prompt(self, uid: int) -> bool:
+        """
+        Assumptions: user privilege has already been checked beforehand.
+        """
+        try:
+            self.cur.execute("UPDATE dataset SET approved = 1 WHERE id = ?", (uid,))
+            self.conn.commit()
+            return True
+        except mariadb.Error as e:
+            logger.warning(f"Failed to approve {id}: {e}")
+            return False
+
+    def modify_prompt(
+        self,
+        uid: int,
+        is_privileged_role: bool,
+        prompt: Optional[str],
+        weight: Optional[int],
+        sensitivity: Optional[str],
+        flags: Optional[str]
+    ) -> Optional[DatasetEntry]:
+        """
+        If privileged user, allow them to edit from dataset arbitrarily.
+        If non-privileged user, only allow editing of unapproved entries.
+        """
+        if not is_privileged_role:
+            try:
+                self.cur.execute("SELECT approved from dataset where id = ?", (uid,))
+                approved = self.cur.fetchone()[0]
+                # If previously approved, reject.
+                if approved == 1:
+                    raise PermissionError("Not privileged enough")
+            except mariadb.Error as e:
+                logger.warning(f"Error retrieving {uid}: {e}")
+        try:
+            if prompt:
+                self.cur.execute("UPDATE dataset SET prompt = ? WHERE id = ?", (prompt, uid,))
+            if weight:
+                self.cur.execute("UPDATE dataset SET weight = ? WHERE id = ?", (weight, uid,))
+            if sensitivity:
+                self.cur.execute("UPDATE dataset SET sensitivity = ? WHERE id = ?", (sensitivity, uid,))
+            if flags:
+                self.cur.execute("UPDATE dataset SET flags = ? WHERE id = ?", (flags, uid,))
+            self.conn.commit()
+
+            # Return the new updated entry
+            self.cur.execute("SELECT * FROM dataset WHERE id = ?", (uid,))
+            row = self.cur.fetchone()
+            entry = DatasetEntry(row[0], row[1], row[2], row[3], row[4], row[5], row[6] == 1)
+            return entry
+        except mariadb.Error as e:
+            logger.warning(f"Failed to delete {id}: {e}")
+            return None
+
+    def delete_prompt(self, uid: int, is_privileged_role: bool) -> bool:
+        """
+        If privileged user, allow them to delete from dataset arbitrarily.
+        If non-privileged user, only allow deleting of unapproved entries.
+        """
+        if not is_privileged_role:
+            try:
+                self.cur.execute("SELECT approved from dataset where id = ?", (uid,))
+                approved = self.cur.fetchone()[0]
+                # If previously approved, reject.
+                if approved == 1:
+                    raise PermissionError("Not privileged enough")
+            except mariadb.Error as e:
+                logger.warning(f"Error retrieving {uid}: {e}")
+        try:
+            self.cur.execute("DELETE FROM dataset WHERE id = ?", (uid,))
+            self.conn.commit()
+            return True
+        except mariadb.Error as e:
+            logger.warning(f"Failed to delete {id}: {e}")
+            return False
+
+    def get_pending_prompts(self) -> List[DatasetEntry]:
+        entries = []
+        try:
+            self.cur.execute("SELECT * FROM dataset where approved = 0")
+            for row in self.cur:
+                entry = DatasetEntry(row[0], row[1], row[2], row[3], row[4], row[5])
+                entries.append(entry)
+        except mariadb.Error as e:
+            logger.warning(f"Error retrieving pools: {e}")
+        return entries
+
+    def get_pools(self) -> List[str]:
+        pools = []
+        try:
+            self.cur.execute("SELECT DISTINCT pool FROM dataset where approved = 1")
+            for row in self.cur:
+                pools.append(row[0])
+        except mariadb.Error as e:
+            logger.warning(f"Error retrieving pools: {e}")
+        return pools
+
+    def show_pool(self, pool: str) -> List[DatasetEntry]:
+        entries = []
+        try:
+            self.cur.execute("SELECT * FROM dataset WHERE pool = ? AND approved = 1", (pool,))
+            for row in self.cur:
+                entry = DatasetEntry(row[0], row[1], row[2], row[3], row[4], row[5])
+                entries.append(entry)
+        except mariadb.Error as e:
+            logger.warning(f"Error showing pool {pool}: {e}")
+        return entries
