@@ -44,6 +44,10 @@ class SlashCommands(commands.Cog):
         error_msg = None
         uid = -1
         # Perform some pre-checks
+        pool = pool.strip()
+        prompt = prompt.strip()
+        sensitivity = sensitivity.strip()
+        flags = flags.strip()
         if sensitivity not in ['S', 'E', 'Q']:
             error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
         else:
@@ -94,11 +98,30 @@ class SlashCommands(commands.Cog):
         Approved prompts can only be modified by specific roles.
         Unapproved prompts can be modified by anyone.
         """
+        # Construct summary of modifications requested
+        modifications = "Modifications: "
+        if prompt:
+            modifications += f"prompt: {prompt}, "
+        if weight:
+            modifications += f"weight: {weight}, "
+        if sensitivity:
+            modifications += f"sensitivity: {sensitivity}, "
+        if flags:
+            modifications += f"flags: {flags}"
+        # strip trailing whitespace and ,
+        modifications = modifications.strip(", ")
+
         try:
             error_msg = None
             # Perform some pre-checks
-            if sensitivity and sensitivity not in ['S', 'E', 'Q']:
-                error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
+            if sensitivity:
+                sensitivity = sensitivity.strip()
+                if sensitivity not in ['S', 'E', 'Q']:
+                    error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
+            if prompt:
+                prompt = prompt.strip()
+            if flags:
+                flags = flags.strip()
             updated_entry = self.db.modify_prompt(
                 prompt_id,
                 self._is_privileged_role(interaction),
@@ -109,19 +132,6 @@ class SlashCommands(commands.Cog):
             )
             if updated_entry is None:
                 error_msg = "DB failed to modify prompt."
-
-            # Construct summary of modifications requested
-            modifications = "Modifications: "
-            if prompt:
-                modifications += f"prompt: {prompt}, "
-            if weight:
-                modifications += f"weight: {weight}, "
-            if sensitivity:
-                modifications += f"sensitivity: {sensitivity}, "
-            if flags:
-                modifications += f"flags: {flags}"
-            # strip trailing whitespace and ,
-            modifications = modifications.strip(", ")
 
             # Construct the embed
             embed = None
@@ -147,7 +157,13 @@ class SlashCommands(commands.Cog):
                 embed.add_field(name="Approved?", value=updated_entry.approved, inline=False)
             await interaction.response.send_message(embed=embed)
         except PermissionError:
-            await interaction.response.send_message("❌ Role is not allowed to modify approved prompt.")
+            embed = discord.Embed(
+                title = f"Role cannot update Prompt ID #{prompt_id}!",
+                description = modifications,
+                color = discord.Color.red()
+            )
+            embed.set_footer(text="❌ Role is not allowed to modify approved prompt.")
+            await interaction.response.send_message(embed=embed)
 
     ###################################################################################
     @app_commands.command(
@@ -167,7 +183,7 @@ class SlashCommands(commands.Cog):
                 return
             await interaction.response.send_message(f"❌ Failed to delete Prompt ID #{prompt_id}!")
         except PermissionError:
-            await interaction.response.send_message("❌ Role is not allowed to delete approved prompt.")
+            await interaction.response.send_message(f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.")
 
     ###################################################################################
     @app_commands.command(
@@ -185,7 +201,7 @@ class SlashCommands(commands.Cog):
             else:
                 await interaction.response.send_message(f"❌ Failed to approve Prompt ID #{prompt_id}!")
             return
-        await interaction.response.send_message("❌ Role is not allowed to approve prompt.")
+        await interaction.response.send_message(f"❌ Role is not allowed to approve prompt ID #{prompt_id}.")
 
     ###################################################################################
     @app_commands.command(
@@ -197,9 +213,22 @@ class SlashCommands(commands.Cog):
         """
         Given a pool name, show all the current entries in this pool.
         """
+        pool = pool.strip()
         entries = self.db.show_pool(pool)
         if len(entries) == 0:
-            await interaction.response.send_message("❌ No such pool!")
+            pools = self.db.get_pools()
+            msg = f"❌ Pool `{pool}` does not exist!\n"
+            if len(pools) == 0:
+                msg += "There are no existing pools.\n"
+            else:
+                msg += "Existing pools: " + ', '.join(pools)
+                msg += "\n"
+            msg += "To make a new pool:\n"
+            msg += "1) Add a prompt with /add-prompt.\n"
+            msg += "2) Someone with the correct role needs to /approve-prompt.\n"
+            msg += "3) Now /show-pool will show the new pool with prompts."
+            await interaction.response.send_message(msg)
+            return
         output = f'[Pool: {pool}]\n'
         for entry in entries:
             output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
@@ -217,7 +246,16 @@ class SlashCommands(commands.Cog):
         Show all the available pools.
         """
         pools = self.db.get_pools()
-        await interaction.response.send_message(', '.join(pools))
+        msg = "Existing pools: "
+        if len(pools) == 0:
+            msg += "There are no existing pools.\n"
+            msg += "To make a new pool:\n"
+            msg += "1) Add a prompt with /add-prompt.\n"
+            msg += "2) Someone with the correct role needs to /approve-prompt.\n"
+            msg += "3) Now /list-pools will show the newly created pool."
+        else:
+            msg += ', '.join(pools)
+        await interaction.response.send_message(msg)
 
     ###################################################################################
     @app_commands.command(
