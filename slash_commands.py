@@ -217,11 +217,12 @@ class SlashCommands(commands.Cog):
         entries = self.db.show_pool(pool)
         if len(entries) == 0:
             pools = self.db.get_pools()
-            msg = f"❌ Pool {pool} does not exist!\n"
+            msg = f"❌ Pool `{pool}` does not exist!\n"
             if len(pools) == 0:
                 msg += "There are no existing pools.\n"
             else:
                 msg += "Existing pools: " + ', '.join(pools)
+                msg += "\n"
             msg += "To make a new pool:\n"
             msg += "1) Add a prompt with /add-prompt.\n"
             msg += "2) Someone with the correct role needs to /approve-prompt.\n"
@@ -247,7 +248,7 @@ class SlashCommands(commands.Cog):
         pools = self.db.get_pools()
         msg = "Existing pools: "
         if len(pools) == 0:
-            msg += "There are no existing pools."
+            msg += "There are no existing pools.\n"
             msg += "To make a new pool:\n"
             msg += "1) Add a prompt with /add-prompt.\n"
             msg += "2) Someone with the correct role needs to /approve-prompt.\n"
