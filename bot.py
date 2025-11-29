@@ -14,23 +14,25 @@ class FireStormBot(commands.Bot):
     Main Entrypoint for the Discord Bot
     """
 
-    def __init__(self, guild_id: int, approved_roles: List[str], db: Db):
+    def __init__(self, guilds: List[discord.Object], approved_roles: List[str], db: Db):
         """
-        :param guild_id: guild id to sync commands to
+        :param guilds: List of guild ids to sync commands to
         :param approved_roles: Roles that are allowed to approve prompts
         :param db: DB to use for the dataset storage
         """
-        intents2 = discord.Intents.default()
-        intents2.message_content = True
-        super().__init__(command_prefix="!", intents=intents2)
-        self._guild_id = discord.Object(guild_id)
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="!", intents=intents)
+        self._guilds = guilds
         self._approved_roles = approved_roles
         self._db = db
 
     async def setup_hook(self):
-        await self.add_cog(SlashCommands(self, self._approved_roles, self._db),  guild=self._guild_id)
-        # Note: if guild_id not specified, may take up to an hour to sync.
-        await self.tree.sync(guild=self._guild_id)
+        # Add commands only for specific guilds.
+        await self.add_cog(SlashCommands(self, self._approved_roles, self._db),  guilds=self._guilds)
+        # Sync commands to guild immediately (if not it will take an hour)
+        for guild in self._guilds:
+            await self.tree.sync(guild=guild)
         logger.info("App commands loaded and synced!")
 
     async def on_ready(self):
