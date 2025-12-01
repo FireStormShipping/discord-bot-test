@@ -15,7 +15,9 @@ class DatasetEntry(object):
             weight: int,
             sensitivity: str,
             flags: str,
-            approved: bool = True
+            approved: bool = True,
+            rejected: bool = False,
+            rejection_reason: str = "",
     ):
         self.uid = uid
         self.pool = pool
@@ -24,6 +26,8 @@ class DatasetEntry(object):
         self.sensitivity = sensitivity
         self.flags = flags
         self.approved = approved
+        self.rejected = rejected
+        self.rejection_reason = rejection_reason
 
 class Db(object):
     """
@@ -94,6 +98,21 @@ class Db(object):
             logger.warning(f"Failed to approve {id}: {e}")
             return False
 
+    def reject_prompt(self, uid: int, reason: str) -> bool:
+        """
+        Assumptions: user privilege has already been checked beforehand.
+        """
+        try:
+            self.cur.execute(
+                "UPDATE dataset SET rejected = 1, reject_reason = ? WHERE id = ?",
+                (reason, uid)
+            )
+            self.conn.commit()
+            return True
+        except mariadb.Error as e:
+            logger.warning(f"Failed to reject {id}: {e}")
+            return False
+
     def modify_prompt(
         self,
         uid: int,
@@ -105,15 +124,18 @@ class Db(object):
     ) -> Optional[DatasetEntry]:
         """
         If privileged user, allow them to edit from dataset arbitrarily.
-        If non-privileged user, only allow editing of unapproved entries.
+        If non-privileged user, only allow editing of unapproved entries that have not been rejected.
         """
         if not is_privileged_role:
             try:
-                self.cur.execute("SELECT approved from dataset where id = ?", (uid,))
-                approved = self.cur.fetchone()[0]
+                self.cur.execute("SELECT approved, rejected from dataset where id = ?", (uid,))
+                approved, rejected = self.cur.fetchone()
                 # If previously approved, reject.
                 if approved == 1:
-                    raise PermissionError("Not privileged enough")
+                    raise PermissionError("User does not have permission to modify an approved entry.")
+                # Check that entry was not previously rejected.
+                if rejected == 1:
+                    raise PermissionError("Rejected entry cannot be modified!")
             except mariadb.Error as e:
                 logger.warning(f"Error retrieving {uid}: {e}")
         try:
@@ -161,9 +183,22 @@ class Db(object):
     def get_pending_prompts(self) -> List[DatasetEntry]:
         entries = []
         try:
-            self.cur.execute("SELECT * FROM dataset where approved = 0")
+            self.cur.execute("SELECT * FROM dataset where approved = 0 AND rejected = 0")
             for row in self.cur:
                 entry = DatasetEntry(row[0], row[1], row[2], row[3], row[4], row[5])
+                entries.append(entry)
+        except mariadb.Error as e:
+            logger.warning(f"Error retrieving pools: {e}")
+        return entries
+
+    def get_rejected_prompts(self) -> List[DatasetEntry]:
+        entries = []
+        try:
+            self.cur.execute("SELECT * FROM dataset where approved = 0 AND rejected = 1")
+            for row in self.cur:
+                entry = DatasetEntry(
+                    row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+                )
                 entries.append(entry)
         except mariadb.Error as e:
             logger.warning(f"Error retrieving pools: {e}")
