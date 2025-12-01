@@ -264,6 +264,8 @@ class SlashCommands(commands.Cog):
             output += f"Weight: {entry.weight}, {entry.sensitivity}"
             if entry.flags:
                 output += f", Flags: {entry.flags}\n"
+            else:
+                output += "\n"
         # TODO: Return it as Pagination instead, as the pool might be very huge and exceed msg limit.
         await interaction.response.send_message(output)
 
@@ -304,6 +306,8 @@ class SlashCommands(commands.Cog):
             output += f"Weight: {entry.weight}, {entry.sensitivity}"
             if entry.flags:
                 output += f", Flags: {entry.flags}\n"
+            else:
+                output += "\n"
         await interaction.response.send_message(output)
 
     ###################################################################################
