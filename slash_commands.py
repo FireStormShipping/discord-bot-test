@@ -30,7 +30,7 @@ class SlashCommands(commands.Cog):
     @app_commands.describe(
         pool="The pool to add the prompt to",
         prompt="The prompt to add to the pool",
-        sensitivity="S/E/Q",
+        sensitivity="Safe/Explicit/Questionable",
         weight="Weight of the Prompt. Default value depends on sensitivity",
         flags="Categories (Comma-separated string)"
     )
@@ -171,7 +171,7 @@ class SlashCommands(commands.Cog):
                 color = discord.Color.red()
             )
             embed.set_footer(text="❌ Role is not allowed to modify approved prompt.")
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     ###################################################################################
     @app_commands.command(
@@ -189,9 +189,12 @@ class SlashCommands(commands.Cog):
             if self.db.delete_prompt(prompt_id, self._is_privileged_role(interaction)):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} deleted!")
                 return
-            await interaction.response.send_message(f"❌ Failed to delete Prompt ID #{prompt_id}!")
+            await interaction.response.send_message(f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!")
         except PermissionError:
-            await interaction.response.send_message(f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.")
+            await interaction.response.send_message(
+                f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.",
+                ephemeral=True
+            )
 
     ###################################################################################
     @app_commands.command(
@@ -207,9 +210,12 @@ class SlashCommands(commands.Cog):
             if self.db.approve_prompt(prompt_id):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} approved!")
             else:
-                await interaction.response.send_message(f"❌ Failed to approve Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!")
             return
-        await interaction.response.send_message(f"❌ Role is not allowed to approve prompt ID #{prompt_id}.")
+        await interaction.response.send_message(
+            f"❌ Role is not allowed to approve prompt ID #{prompt_id}.",
+            ephemeral=True
+        )
 
     ###################################################################################
     @app_commands.command(
@@ -226,11 +232,14 @@ class SlashCommands(commands.Cog):
         """
         if self._is_privileged_role(interaction):
             if self.db.reject_prompt(prompt_id, reason):
-                await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} rejected!")
+                await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}")
             else:
-                await interaction.response.send_message(f"❌ Failed to reject Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!")
             return
-        await interaction.response.send_message(f"❌ Role is not allowed to reject prompt ID #{prompt_id}.")
+        await interaction.response.send_message(
+            f"❌ Role is not allowed to reject prompt ID #{prompt_id}.",
+            ephemeral=True
+        )
 
     ###################################################################################
     @app_commands.command(
@@ -308,7 +317,10 @@ class SlashCommands(commands.Cog):
                 output += f", Flags: {entry.flags}\n"
             else:
                 output += "\n"
-        await interaction.response.send_message(output)
+        if output == '':
+            await interaction.response.send_message("No pending prompts.")
+        else:
+            await interaction.response.send_message(output)
 
     ###################################################################################
     @app_commands.command(
@@ -326,6 +338,23 @@ class SlashCommands(commands.Cog):
             output += f"{entry.sensitivity}, Flags: {entry.flags}, "
             output += f"Rejection Reason: {entry.rejection_reason}\n"
         await interaction.response.send_message(output)
+
+    ###################################################################################
+    @app_commands.command(
+        name="help",
+        description="How to use this bot.",
+    )
+    async def display_help(self, interaction: discord.Interaction) -> None:
+        """
+        Display basic info about how to use this bot.
+        """
+        output = "**How to use this bot**\n"
+        output += "1. Use `/list-pools` to view a list of available pools/datasets.\n"
+        output += "2. To view current entries in a pool, use `/show-pool`.\n"
+        output += "3. Use `/add-prompt` to add a new prompt to a pool.\n"
+        output += "4. Wait for allowed roles to `/approve-prompt`.\n"
+        output += "5. Tada! That's all!"
+        await interaction.response.send_message(output, ephemeral=True)
 
     ###################################################################################
     # Internal functions
