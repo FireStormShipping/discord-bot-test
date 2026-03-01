@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS dataset (
   sensitivity CHAR(1) CHECK (sensitivity IN ('S', 'E', 'Q')),
   flags VARCHAR(1024),
   approved BOOL,
+  rejected BOOLEAN NOT NULL DEFAULT FALSE,
+  reject_reason VARCHAR(1024),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

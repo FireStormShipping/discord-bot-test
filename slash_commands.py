@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import discord
 from discord import app_commands
@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from db import Db
 
+SENSITIVITY = Literal['S', 'E', 'Q']
 
 class SlashCommands(commands.Cog):
     """
@@ -29,27 +30,36 @@ class SlashCommands(commands.Cog):
     @app_commands.describe(
         pool="The pool to add the prompt to",
         prompt="The prompt to add to the pool",
-        weight="Weight of the Prompt",
-        sensitivity="S/E/Q",
-        flags="Categories"
+        sensitivity="Safe/Explicit/Questionable",
+        weight="Weight of the Prompt. Default value depends on sensitivity",
+        flags="Categories (Comma-separated string)"
     )
     async def add_prompt(self,
         interaction: discord.Interaction,
         pool: str,
         prompt: str,
-        weight: int,
-        sensitivity: str,
-        flags: str
+        sensitivity: SENSITIVITY,
+        weight: Optional[int],
+        flags: Optional[str]
     ) -> None:
         error_msg = None
         uid = -1
         # Perform some pre-checks
-        if sensitivity not in ['S', 'E', 'Q']:
-            error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
-        else:
-            uid = self.db.add_prompt(pool, prompt, weight, sensitivity, flags)
-            if uid < 0:
-                error_msg = "DB failed to add prompt."
+        pool = pool.strip()
+        prompt = prompt.strip()
+        if weight is None:
+            if sensitivity == 'S':
+                weight = 1
+            if sensitivity == 'E':
+                weight = 2
+            if sensitivity == 'Q':
+                weight = 3
+        if flags is None:
+            flags = ''
+        flags = flags.strip()
+        uid = self.db.add_prompt(pool, prompt, weight, sensitivity, flags)
+        if uid < 0:
+            error_msg = "DB failed to add prompt."
 
         embed = None
         if error_msg is not None:
@@ -79,14 +89,20 @@ class SlashCommands(commands.Cog):
         name="modify-prompt",
         description="Modify a prompt.",
     )
-    @app_commands.describe(prompt_id="The ID of the prompt to modify.")
+    @app_commands.describe(
+        prompt_id="The ID of the prompt to modify",
+        prompt="Modify the prompt string",
+        weight="Modify the prompt weight",
+        sensitivity="Modify the prompt sensitivity",
+        flags="Modify the prompt flags"
+    )
     async def modify_prompt(
         self,
         interaction: discord.Interaction,
         prompt_id: int,
         prompt: Optional[str],
         weight: Optional[int],
-        sensitivity: Optional[str],
+        sensitivity: Optional[SENSITIVITY],
         flags: Optional[str]
     ) -> None:
         """
@@ -94,11 +110,26 @@ class SlashCommands(commands.Cog):
         Approved prompts can only be modified by specific roles.
         Unapproved prompts can be modified by anyone.
         """
+        # Construct summary of modifications requested
+        modifications = "Modifications: "
+        if prompt:
+            modifications += f"prompt: {prompt}, "
+        if weight:
+            modifications += f"weight: {weight}, "
+        if sensitivity:
+            modifications += f"sensitivity: {sensitivity}, "
+        if flags:
+            modifications += f"flags: {flags}"
+        # strip trailing whitespace and ,
+        modifications = modifications.strip(", ")
+
         try:
             error_msg = None
             # Perform some pre-checks
-            if sensitivity and sensitivity not in ['S', 'E', 'Q']:
-                error_msg = "Sensitivity must be one of 'S', 'E' or 'Q'."
+            if prompt:
+                prompt = prompt.strip()
+            if flags:
+                flags = flags.strip()
             updated_entry = self.db.modify_prompt(
                 prompt_id,
                 self._is_privileged_role(interaction),
@@ -109,19 +140,6 @@ class SlashCommands(commands.Cog):
             )
             if updated_entry is None:
                 error_msg = "DB failed to modify prompt."
-
-            # Construct summary of modifications requested
-            modifications = "Modifications: "
-            if prompt:
-                modifications += f"prompt: {prompt}, "
-            if weight:
-                modifications += f"weight: {weight}, "
-            if sensitivity:
-                modifications += f"sensitivity: {sensitivity}, "
-            if flags:
-                modifications += f"flags: {flags}"
-            # strip trailing whitespace and ,
-            modifications = modifications.strip(", ")
 
             # Construct the embed
             embed = None
@@ -147,7 +165,13 @@ class SlashCommands(commands.Cog):
                 embed.add_field(name="Approved?", value=updated_entry.approved, inline=False)
             await interaction.response.send_message(embed=embed)
         except PermissionError:
-            await interaction.response.send_message("❌ Role is not allowed to modify approved prompt.")
+            embed = discord.Embed(
+                title = f"Role cannot update Prompt ID #{prompt_id}!",
+                description = modifications,
+                color = discord.Color.red()
+            )
+            embed.set_footer(text="❌ Role is not allowed to modify approved prompt.")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     ###################################################################################
     @app_commands.command(
@@ -165,9 +189,12 @@ class SlashCommands(commands.Cog):
             if self.db.delete_prompt(prompt_id, self._is_privileged_role(interaction)):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} deleted!")
                 return
-            await interaction.response.send_message(f"❌ Failed to delete Prompt ID #{prompt_id}!")
+            await interaction.response.send_message(f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!")
         except PermissionError:
-            await interaction.response.send_message("❌ Role is not allowed to delete approved prompt.")
+            await interaction.response.send_message(
+                f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.",
+                ephemeral=True
+            )
 
     ###################################################################################
     @app_commands.command(
@@ -177,34 +204,78 @@ class SlashCommands(commands.Cog):
     @app_commands.describe(prompt_id="The ID of the unapproved prompt to approve")
     async def approve_prompt(self, interaction: discord.Interaction, prompt_id: int) -> None:
         """
-        Allow certain roles to approve the prompt.
+        Allow only certain roles to approve the prompt.
         """
         if self._is_privileged_role(interaction):
             if self.db.approve_prompt(prompt_id):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} approved!")
             else:
-                await interaction.response.send_message(f"❌ Failed to approve Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!")
             return
-        await interaction.response.send_message("❌ Role is not allowed to approve prompt.")
+        await interaction.response.send_message(
+            f"❌ Role is not allowed to approve prompt ID #{prompt_id}.",
+            ephemeral=True
+        )
+
+    ###################################################################################
+    @app_commands.command(
+        name="reject-prompt",
+        description="Reject Prompt Command",
+    )
+    @app_commands.describe(
+        prompt_id="The ID of the unapproved prompt to reject",
+        reason="Reason for rejecting prompt"
+    )
+    async def reject_prompt(self, interaction: discord.Interaction, prompt_id: int, reason: str) -> None:
+        """
+        Allow only certain roles to reject the prompt.
+        """
+        if self._is_privileged_role(interaction):
+            if self.db.reject_prompt(prompt_id, reason):
+                await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}")
+            else:
+                await interaction.response.send_message(f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!")
+            return
+        await interaction.response.send_message(
+            f"❌ Role is not allowed to reject prompt ID #{prompt_id}.",
+            ephemeral=True
+        )
 
     ###################################################################################
     @app_commands.command(
         name="show-pool",
         description="Show current entries in a specified pool. Only approved entries will show up.",
     )
-    @app_commands.describe(pool="The name of the pool to show.")
+    @app_commands.describe(pool="The name of the pool to show")
     async def show_pool(self, interaction: discord.Interaction, pool: str) -> None:
         """
         Given a pool name, show all the current entries in this pool.
         """
+        pool = pool.strip()
         entries = self.db.show_pool(pool)
         if len(entries) == 0:
-            await interaction.response.send_message("❌ No such pool!")
+            pools = self.db.get_pools()
+            msg = f"❌ Pool `{pool}` does not exist!\n"
+            if len(pools) == 0:
+                msg += "There are no existing pools.\n"
+            else:
+                msg += "Existing pools: " + ', '.join(pools)
+                msg += "\n"
+            msg += "To make a new pool:\n"
+            msg += "1) Add a prompt with /add-prompt.\n"
+            msg += "2) Someone with the correct role needs to /approve-prompt.\n"
+            msg += "3) Now /show-pool will show the new pool with prompts."
+            await interaction.response.send_message(msg)
+            return
         output = f'[Pool: {pool}]\n'
         for entry in entries:
             output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
-            output += f"Weight: {entry.weight}, {entry.sensitivity}, {entry.flags}\n"
-        # TODO: Return it as text file instead, as the pool might be very huge and exceed msg limit.
+            output += f"Weight: {entry.weight}, {entry.sensitivity}"
+            if entry.flags:
+                output += f", Flags: {entry.flags}\n"
+            else:
+                output += "\n"
+        # TODO: Return it as Pagination instead, as the pool might be very huge and exceed msg limit.
         await interaction.response.send_message(output)
 
     ###################################################################################
@@ -217,7 +288,16 @@ class SlashCommands(commands.Cog):
         Show all the available pools.
         """
         pools = self.db.get_pools()
-        await interaction.response.send_message(', '.join(pools))
+        msg = "Existing pools: "
+        if len(pools) == 0:
+            msg += "There are no existing pools.\n"
+            msg += "To make a new pool:\n"
+            msg += "1) Add a prompt with /add-prompt.\n"
+            msg += "2) Someone with the correct role needs to /approve-prompt.\n"
+            msg += "3) Now /list-pools will show the newly created pool."
+        else:
+            msg += ', '.join(pools)
+        await interaction.response.send_message(msg)
 
     ###################################################################################
     @app_commands.command(
@@ -232,8 +312,49 @@ class SlashCommands(commands.Cog):
         output = ''
         for entry in pending_prompts:
             output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
-            output += f"Weight: {entry.weight}, {entry.sensitivity}, {entry.flags}\n"
+            output += f"Weight: {entry.weight}, {entry.sensitivity}"
+            if entry.flags:
+                output += f", Flags: {entry.flags}\n"
+            else:
+                output += "\n"
+        if output == '':
+            await interaction.response.send_message("No pending prompts.")
+        else:
+            await interaction.response.send_message(output)
+
+    ###################################################################################
+    @app_commands.command(
+        name="rejected-prompts",
+        description="Show all the rejected prompts.",
+    )
+    async def rejected_prompts(self, interaction: discord.Interaction) -> None:
+        """
+        Show all the rejected prompts.
+        """
+        rejected_prompts = self.db.get_rejected_prompts()
+        output = ''
+        for entry in rejected_prompts:
+            output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
+            output += f"{entry.sensitivity}, Flags: {entry.flags}, "
+            output += f"Rejection Reason: {entry.rejection_reason}\n"
         await interaction.response.send_message(output)
+
+    ###################################################################################
+    @app_commands.command(
+        name="help",
+        description="How to use this bot.",
+    )
+    async def display_help(self, interaction: discord.Interaction) -> None:
+        """
+        Display basic info about how to use this bot.
+        """
+        output = "**How to use this bot**\n"
+        output += "1. Use `/list-pools` to view a list of available pools/datasets.\n"
+        output += "2. To view current entries in a pool, use `/show-pool`.\n"
+        output += "3. Use `/add-prompt` to add a new prompt to a pool.\n"
+        output += "4. Wait for allowed roles to `/approve-prompt`.\n"
+        output += "5. Tada! That's all!"
+        await interaction.response.send_message(output, ephemeral=True)
 
     ###################################################################################
     # Internal functions
