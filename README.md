@@ -1,4 +1,4 @@
-# discord-bot-test
+# firestorm-discord-bot
 
 ## Deploying
 ```bash
