@@ -15,3 +15,13 @@ python3 -m venv venv
 ./venv/bin/activate
 pip3 install -r requirements.txt
 ```
+
+### Running without Docker
+```bash
+python3 -m app.main
+```
+
+### Running unittests
+```bash
+nose2
+```

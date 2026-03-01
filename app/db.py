@@ -1,33 +1,15 @@
 import logging
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 import mariadb
 
+from .app_types import DatasetEntry
+
 logger = logging.getLogger("firestorm_bot")
 
-class DatasetEntry(object):
-    def __init__(
-            self,
-            uid: int,
-            pool: str,
-            prompt: str,
-            weight: int,
-            sensitivity: str,
-            flags: str,
-            approved: bool = True,
-            rejected: bool = False,
-            rejection_reason: str = "",
-    ):
-        self.uid = uid
-        self.pool = pool
-        self.prompt = prompt
-        self.weight = weight
-        self.sensitivity = sensitivity
-        self.flags = flags
-        self.approved = approved
-        self.rejected = rejected
-        self.rejection_reason = rejection_reason
+CURRENT_DIR = str(Path(__file__).resolve().parent)
 
 class Db(object):
     """
@@ -55,7 +37,7 @@ class Db(object):
             logger.info(f"Successfully connected to {database}!")
 
             # Run migrations/database initializations
-            with open('schema.sql', 'r', encoding='utf-8') as f:
+            with open(f'{CURRENT_DIR}/schema.sql', 'r', encoding='utf-8') as f:
                 sql_script = f.read()
                 self.cur.execute(sql_script)
                 conn.commit()

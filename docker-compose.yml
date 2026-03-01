@@ -15,7 +15,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./app/:/app
+      - ./app/:/app/app
     logging:
       driver: 'json-file'
       options:

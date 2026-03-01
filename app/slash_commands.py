@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from db import Db
+from .db import Db
 
 SENSITIVITY = Literal['S', 'E', 'Q']
 
@@ -338,6 +338,24 @@ class SlashCommands(commands.Cog):
             output += f"{entry.sensitivity}, Flags: {entry.flags}, "
             output += f"Rejection Reason: {entry.rejection_reason}\n"
         await interaction.response.send_message(output)
+
+    ###################################################################################
+    @app_commands.command(
+        name="sync-dataset",
+        description="Sync the latest dataset from DB to Github.",
+    )
+    async def sync_dataset(self, interaction: discord.Interaction) -> None:
+        """
+        Grabs the latest dataset from the DB, convert them to JSON files,
+        and make a pull-request to firestorm-bingo.
+        """
+        if self._is_privileged_role(interaction):
+            # TODO
+            pass
+        await interaction.response.send_message(
+            "❌ Role is not allowed to sync the dataset!",
+            ephemeral=True
+        )
 
     ###################################################################################
     @app_commands.command(

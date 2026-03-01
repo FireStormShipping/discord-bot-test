@@ -6,8 +6,8 @@ import discord
 from discord.utils import _ColourFormatter
 from dotenv import load_dotenv
 
-from bot import FireStormBot
-from db import Db
+from .bot import FireStormBot
+from .db import Db
 
 logger = logging.getLogger("firestorm_bot")
 log_handler = logging.StreamHandler()
