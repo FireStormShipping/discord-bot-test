@@ -4,8 +4,8 @@ from typing import List
 import discord
 from discord.ext import commands
 
-from db import Db
-from slash_commands import SlashCommands
+from .db import Db
+from .slash_commands import SlashCommands
 
 logger = logging.getLogger("firestorm_bot")
 

@@ -6,8 +6,8 @@ import discord
 from discord.utils import _ColourFormatter
 from dotenv import load_dotenv
 
-from bot import FireStormBot
-from db import Db
+from .bot import FireStormBot
+from .db import Db
 
 logger = logging.getLogger("firestorm_bot")
 log_handler = logging.StreamHandler()
@@ -20,6 +20,7 @@ def convert_to_snowflake(item: str) -> discord.Object:
 
 if __name__ == "__main__":
     # 1. Get all settings
+    logger.info("Initializing environment...")
     load_dotenv() # Load env variables from .env if it exists
     approved_roles = os.environ.get('PRIVILEGED_ROLES', "admin")
     guild_ids = os.environ.get('GUILD_IDS', None)
