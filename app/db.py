@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import mariadb
 
-from .app_types import DatasetEntry
+from .app_types import ERROR_ENTRY_EXISTS, ERROR_MARIA_DB, DatasetEntry
 
 logger = logging.getLogger("firestorm_bot")
 
@@ -58,6 +58,16 @@ class Db(object):
         Returns ID of the last row inserted.
         """
         try:
+            # First check whether the prompt exists in this pool.
+            self.cur.execute(
+                "SELECT 1 FROM dataset where pool = %s AND prompt = %s LIMIT 1",
+                (pool, prompt)
+            )
+            result = self.cur.fetchone()
+            # If fetchone is not None, that means prompt exists in pool.
+            if result:
+                return ERROR_ENTRY_EXISTS
+            # Now add the entry.
             self.cur.execute(
                 "INSERT INTO dataset (pool, prompt, weight, sensitivity, flags, approved) VALUES (?, ?, ?, ?, ?, ?)",
                 (pool, prompt, weight, sensitivity, flags, False)
@@ -66,7 +76,7 @@ class Db(object):
             return self.cur.lastrowid
         except mariadb.Error as e:
             logger.warning(f"Error adding prompt: {e}")
-            return -1
+            return ERROR_MARIA_DB
 
     def approve_prompt(self, uid: int) -> bool:
         """

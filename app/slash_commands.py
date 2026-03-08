@@ -1,9 +1,12 @@
+import os
 from typing import List, Literal, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from .app_types import ERROR_ENTRY_EXISTS, ERROR_MARIA_DB
+from .dataset_encoder import TableEncoder
 from .db import Db
 
 SENSITIVITY = Literal['S', 'E', 'Q']
@@ -59,7 +62,12 @@ class SlashCommands(commands.Cog):
         flags = flags.strip()
         uid = self.db.add_prompt(pool, prompt, weight, sensitivity, flags)
         if uid < 0:
-            error_msg = "DB failed to add prompt."
+            if uid == ERROR_MARIA_DB:
+                error_msg = "DB failed to add prompt."
+            elif uid == ERROR_ENTRY_EXISTS:
+                error_msg = "Prompt already exists in this pool."
+            else:
+                error_msg = "Unknown DB error."
 
         embed = None
         if error_msg is not None:
@@ -189,7 +197,9 @@ class SlashCommands(commands.Cog):
             if self.db.delete_prompt(prompt_id, self._is_privileged_role(interaction)):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} deleted!")
                 return
-            await interaction.response.send_message(f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!")
+            await interaction.response.send_message(
+                f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!"
+            )
         except PermissionError:
             await interaction.response.send_message(
                 f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.",
@@ -267,16 +277,17 @@ class SlashCommands(commands.Cog):
             msg += "3) Now /show-pool will show the new pool with prompts."
             await interaction.response.send_message(msg)
             return
-        output = f'[Pool: {pool}]\n'
-        for entry in entries:
-            output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
-            output += f"Weight: {entry.weight}, {entry.sensitivity}"
-            if entry.flags:
-                output += f", Flags: {entry.flags}\n"
-            else:
-                output += "\n"
-        # TODO: Return it as Pagination instead, as the pool might be very huge and exceed msg limit.
-        await interaction.response.send_message(output)
+        # Generate a temporary file to store the pool data
+        enc = TableEncoder()
+        pool_file = f"/tmp/{pool.replace(" ", "_")}.txt"
+        with open(pool_file, "w", encoding="utf-8") as f:
+            f.write(enc.get_header_pretty())
+            for entry in entries:
+                f.write(enc.encode(entry))
+        # Send the file as response
+        await interaction.response.send_message(file=discord.File(pool_file))
+        # Delete the temporary file
+        os.remove(pool_file)
 
     ###################################################################################
     @app_commands.command(
@@ -351,11 +362,14 @@ class SlashCommands(commands.Cog):
         """
         if self._is_privileged_role(interaction):
             # TODO
-            pass
-        await interaction.response.send_message(
-            "❌ Role is not allowed to sync the dataset!",
-            ephemeral=True
-        )
+            await interaction.response.send_message(
+                "Sorry not implemented yet..."
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Role is not allowed to sync the dataset!",
+                ephemeral=True
+            )
 
     ###################################################################################
     @app_commands.command(

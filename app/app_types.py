@@ -1,15 +1,15 @@
 class DatasetEntry(object):
     def __init__(
-            self,
-            uid: int,
-            pool: str,
-            prompt: str,
-            weight: int,
-            sensitivity: str,
-            flags: str,
-            approved: bool = True,
-            rejected: bool = False,
-            rejection_reason: str = "",
+        self,
+        uid: int,
+        pool: str,
+        prompt: str,
+        weight: int,
+        sensitivity: str,
+        flags: str,
+        approved: bool = True,
+        rejected: bool = False,
+        rejection_reason: str = "",
     ):
         self.uid = uid
         self.pool = pool
@@ -21,14 +21,6 @@ class DatasetEntry(object):
         self.rejected = rejected
         self.rejection_reason = rejection_reason
 
-    def as_row_pretty(self):
-        row = (
-            "| "
-            f"{self.uid} |"
-            f"{self.pool} |"
-            f"{self.prompt} |"
-            f"{self.weight} |"
-            f"{self.sensitivity} |"
-            f"{self.flags} |"
-        )
-        return row
+
+ERROR_MARIA_DB = -1
+ERROR_ENTRY_EXISTS = -2

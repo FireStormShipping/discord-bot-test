@@ -61,9 +61,12 @@ class JsonEncoder(Encoder):
 
     def _to_json_entry(self, obj: DatasetEntry) -> dict:
         data = {
-            "text": obj.prompt,
-            "weight": obj.weight,
-            "sensitivity": obj.sensitivity,
-            "flags": obj.flags.split(",")
+            "text": obj.prompt
         }
+        if obj.weight != 1:
+            data["weight"] = obj.weight
+        if obj.sensitivity != 'S':
+            data["sensitivity"] = obj.sensitivity
+        if obj.flags != "":
+            data["flags"] = [flag.strip() for flag in obj.flags.split(",")]
         return data
