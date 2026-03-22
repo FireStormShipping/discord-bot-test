@@ -98,7 +98,7 @@ def main():
     default_db_name = os.environ.get('DEFAULT_DB', 'bingo-dataset')
 
     dataset_file = parse_args()
-    dataset_name = dataset_file.split(".")[0]
+    dataset_name = dataset_file.strip(" ./").split(".")[0]
 
     logger.info(f"Processing {dataset_file}...")
     with open(dataset_file, "r", encoding="utf-8") as f:
