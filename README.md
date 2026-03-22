@@ -20,9 +20,9 @@ docker compose up -d
 ## Development
 ### Dependencies (If running without Docker)
 ```bash
-sudo apt-get install -y libmariadb-dev
+sudo apt-get install -y libmariadb-dev python3-venv
 python3 -m venv venv
-./venv/bin/activate
+source venv/bin/activate
 pip3 install -r requirements.txt
 ```
 
