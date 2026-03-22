@@ -1,4 +1,4 @@
-class DatasetEntry(object):
+class DatasetEntry:
     def __init__(
         self,
         uid: int,

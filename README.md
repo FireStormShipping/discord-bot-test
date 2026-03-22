@@ -3,6 +3,13 @@
 A bot for allowing users on a discord server to suggest prompts for the Bingo Dataset.
 
 ## Deploying
+
+### Pre-requisites
+- One of the commands implemented by this discord bot, `/sync-dataset`, requires a Github account that has forked the firestorm-bingo repository.
+    - Ensure that the Github user that you intend to use in the `.env` file has forked the repo before deploying.
+
+### Running the bot
+
 ```bash
 cp .env.example .env
 # Modify the values in .env as needed

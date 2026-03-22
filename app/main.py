@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from .bot import FireStormBot
 from .db import Db
+from .git import GitWrapper
 
 logger = logging.getLogger("firestorm_bot")
 log_handler = logging.StreamHandler()
@@ -30,16 +31,23 @@ if __name__ == "__main__":
     db_host = os.environ.get('DB_HOST', '127.0.0.1')
     db_port = int(os.environ.get('DB_PORT', 3306))
     default_db_name = os.environ.get('DEFAULT_DB', 'bingo-dataset')
+    # git settings
+    upstream_repo = os.environ.get('BINGO_REPO_NAME', 'FireStormShipping/firestorm-bingo')
+    forked_repo = os.environ.get('FORKED_REPO_NAME', 'example-user/example-repo')
+    git_user = forked_repo.split('/')[0]
+    git_token = os.environ.get('GITHUB_TOKEN', 'None')
+    local_repo_path = os.environ.get('LOCAL_REPO_PATH', '/tmp/firestorm-bingo')
 
     if guild_ids is None:
         logger.fatal("No guilds specified! Quitting!")
         sys.exit(1)
 
-    # 2. Initialize the bot and DB.
+    # 2. Initialize git, db and bot.
     guild_list = list(map(convert_to_snowflake, guild_ids.split(',')))
     approved_roles = approved_roles.split(',')
 
     db = Db(db_password, db_host, db_user, db_port, default_db_name)
-    bot = FireStormBot(guild_list, approved_roles, db)
+    git_wrapper = GitWrapper(git_user, git_token, upstream_repo, forked_repo, local_repo_path)
+    bot = FireStormBot(guild_list, approved_roles, db, git_wrapper)
 
     bot.run(bot_token)

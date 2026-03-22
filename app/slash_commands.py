@@ -1,4 +1,7 @@
+import json
+import logging
 import os
+from pathlib import Path
 from typing import List, Literal, Optional
 
 import discord
@@ -6,8 +9,11 @@ from discord import app_commands
 from discord.ext import commands
 
 from .app_types import ERROR_ENTRY_EXISTS, ERROR_MARIA_DB
-from .dataset_encoder import TableEncoder
+from .dataset_encoder import JsonEncoder, TableEncoder
 from .db import Db
+from .git import GitWrapper
+
+logger = logging.getLogger("firestorm_bot")
 
 SENSITIVITY = Literal['S', 'E', 'Q']
 
@@ -16,14 +22,23 @@ class SlashCommands(commands.Cog):
     Commands that can be called as `/<command>`.
     """
 
-    def __init__(self, bot: commands.Bot, approved_roles: List[str], db: Db):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        approved_roles: List[str],
+        db: Db,
+        git_wrapper: GitWrapper
+    ):
         """
         :param bot: discord bot
         :param approved_roles: Roles that are allowed to approve prompts
+        :param db: DB instance
+        :param git_wrapper: Git wrapper for git operations
         """
         self.bot = bot
         self.approved_roles = approved_roles
         self.db = db
+        self.git = git_wrapper
 
     ###################################################################################
     @app_commands.command(
@@ -279,8 +294,10 @@ class SlashCommands(commands.Cog):
             return
         # Generate a temporary file to store the pool data
         enc = TableEncoder()
-        pool_file = f"/tmp/{pool.replace(" ", "_")}.txt"
-        with open(pool_file, "w", encoding="utf-8") as f:
+        pool_file = f"/tmp/tmp/{pool.replace(" ", "_")}.txt"
+        path = Path(pool_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
             f.write(enc.get_header_pretty())
             for entry in entries:
                 f.write(enc.encode(entry))
@@ -361,10 +378,15 @@ class SlashCommands(commands.Cog):
         and make a pull-request to firestorm-bingo.
         """
         if self._is_privileged_role(interaction):
-            # TODO
-            await interaction.response.send_message(
-                "Sorry not implemented yet..."
-            )
+            try:
+                pr_url = self._sync_dataset_internal()
+                await interaction.response.send_message(
+                    f"✅ Dataset successfully synced: {pr_url}"
+                )
+            except Exception as e: # pylint: disable=broad-exception-caught
+                await interaction.response.send_message(
+                    f"❌ Error occurred: {e}"
+                )
         else:
             await interaction.response.send_message(
                 "❌ Role is not allowed to sync the dataset!",
@@ -400,3 +422,42 @@ class SlashCommands(commands.Cog):
             if role.name in self.approved_roles:
                 return True
         return False
+
+    def _sync_dataset_internal(self) -> str | Exception:
+        """Returns the URL for the PR."""
+        try:
+            # 1. Sync upstream to forked repo
+            logger.info("[sync-dataset-internal] Syncing upstream to fork.")
+            self.git.sync_forked_repo_with_upstream()
+            # 2. Clone fresh copy of the forked repo for sanity
+            logger.info("[sync-dataset-internal] Closing fresh copy of forked repo.")
+            repo = self.git.clone_fresh()
+            # 3. Get all avail pools
+            pools = self.db.get_pools()
+            local_folder = f"{self.git.get_local_path()}/app/datasets"
+            # 4. For each pool, process their entries.
+            logger.info("[sync-dataset-internal] Writing pools to files.")
+            for pool in pools:
+                entries = self.db.show_pool(pool)
+                pool_filename = f"{pool.replace(" ", "_")}.json"
+                entries_json = []
+                for entry in entries:
+                    enc = JsonEncoder()
+                    entries_json.append(enc.encode(entry))
+                final_json = {
+                    "entries": entries_json
+                }
+                # 5. Write pool to json file where the repo is locally.
+                fullpath = f"{local_folder}/{pool_filename}"
+                with open(fullpath, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(final_json, indent=2))
+            # 6. Commit the changes
+            logger.info("[sync-dataset-internal] Committing changes.")
+            self.git.commit_changes(repo)
+            # 7. Update the fork on remote
+            logger.info("[sync-dataset-internal] Pushing to fork.")
+            self.git.push_to_remote(repo)
+            # 8. Make Pull Request, return PR URL.
+            return self.git.make_pull_request()
+        except Exception as e: # pylint: disable=broad-exception-caught
+            raise e

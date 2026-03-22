@@ -11,7 +11,7 @@ logger = logging.getLogger("firestorm_bot")
 
 CURRENT_DIR = str(Path(__file__).resolve().parent)
 
-class Db(object):
+class Db:
     """
     Wrapper around Database Operations
     """

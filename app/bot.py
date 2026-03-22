@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 
 from .db import Db
+from .git import GitWrapper
 from .slash_commands import SlashCommands
 
 logger = logging.getLogger("firestorm_bot")
@@ -14,11 +15,18 @@ class FireStormBot(commands.Bot):
     Main Entrypoint for the Discord Bot
     """
 
-    def __init__(self, guilds: List[discord.Object], approved_roles: List[str], db: Db):
+    def __init__(
+        self,
+        guilds: List[discord.Object],
+        approved_roles: List[str],
+        db: Db,
+        git_wrapper: GitWrapper
+    ):
         """
         :param guilds: List of guild ids to sync commands to
         :param approved_roles: Roles that are allowed to approve prompts
         :param db: DB to use for the dataset storage
+        :param git_wrapper: Git wrapper for git operations
         """
         intents = discord.Intents.default()
         intents.message_content = True
@@ -26,10 +34,14 @@ class FireStormBot(commands.Bot):
         self._guilds = guilds
         self._approved_roles = approved_roles
         self._db = db
+        self._git_wrapper = git_wrapper
 
     async def setup_hook(self):
         # Add commands only for specific guilds.
-        await self.add_cog(SlashCommands(self, self._approved_roles, self._db),  guilds=self._guilds)
+        await self.add_cog(
+            SlashCommands(self, self._approved_roles, self._db, self._git_wrapper),
+            guilds=self._guilds
+        )
         # Sync commands to guild immediately (if not it will take an hour)
         for guild in self._guilds:
             await self.tree.sync(guild=guild)
