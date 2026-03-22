@@ -378,13 +378,16 @@ class SlashCommands(commands.Cog):
         and make a pull-request to firestorm-bingo.
         """
         if self._is_privileged_role(interaction):
+            # Syncing dataset takes a while, this will give us more time to
+            # respond to the request.
+            await interaction.response.defer()
             try:
                 pr_url = self._sync_dataset_internal()
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"✅ Dataset successfully synced: {pr_url}"
                 )
             except Exception as e: # pylint: disable=broad-exception-caught
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"❌ Error occurred: {e}"
                 )
         else:
