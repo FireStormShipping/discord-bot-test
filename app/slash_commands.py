@@ -235,7 +235,9 @@ class SlashCommands(commands.Cog):
             if self.db.approve_prompt(prompt_id):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} approved!")
             else:
-                await interaction.response.send_message(f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(
+                    f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!"
+                )
             return
         await interaction.response.send_message(
             f"❌ Role is not allowed to approve prompt ID #{prompt_id}.",
@@ -251,15 +253,24 @@ class SlashCommands(commands.Cog):
         prompt_id="The ID of the unapproved prompt to reject",
         reason="Reason for rejecting prompt"
     )
-    async def reject_prompt(self, interaction: discord.Interaction, prompt_id: int, reason: str) -> None:
+    async def reject_prompt(
+        self,
+        interaction: discord.Interaction,
+        prompt_id: int,
+        reason: str
+    ) -> None:
         """
         Allow only certain roles to reject the prompt.
         """
         if self._is_privileged_role(interaction):
             if self.db.reject_prompt(prompt_id, reason):
-                await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}")
+                await interaction.response.send_message(
+                    f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}"
+                )
             else:
-                await interaction.response.send_message(f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(
+                    f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!"
+                )
             return
         await interaction.response.send_message(
             f"❌ Role is not allowed to reject prompt ID #{prompt_id}.",
@@ -276,6 +287,8 @@ class SlashCommands(commands.Cog):
         """
         Given a pool name, show all the current entries in this pool.
         """
+        # ack msg first as pool size may be big.
+        await interaction.response.defer()
         pool = pool.strip()
         entries = self.db.show_pool(pool)
         if len(entries) == 0:
@@ -290,7 +303,7 @@ class SlashCommands(commands.Cog):
             msg += "1) Add a prompt with /add-prompt.\n"
             msg += "2) Someone with the correct role needs to /approve-prompt.\n"
             msg += "3) Now /show-pool will show the new pool with prompts."
-            await interaction.response.send_message(msg)
+            await interaction.followup.send(msg)
             return
         # Generate a temporary file to store the pool data
         enc = TableEncoder()
@@ -302,7 +315,7 @@ class SlashCommands(commands.Cog):
             for entry in entries:
                 f.write(enc.encode(entry))
         # Send the file as response
-        await interaction.response.send_message(file=discord.File(pool_file))
+        await interaction.followup.send(file=discord.File(pool_file))
         # Delete the temporary file
         os.remove(pool_file)
 
