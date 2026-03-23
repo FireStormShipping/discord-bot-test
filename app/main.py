@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 
-import discord
 from discord.utils import _ColourFormatter
 from dotenv import load_dotenv
 
@@ -15,9 +14,6 @@ log_handler = logging.StreamHandler()
 log_handler.setFormatter(_ColourFormatter())
 logger.addHandler(log_handler)
 logger.setLevel(logging.INFO)
-
-def convert_to_snowflake(item: str) -> discord.Object:
-    return discord.Object(int(item))
 
 if __name__ == "__main__":
     # 1. Get all settings
@@ -43,8 +39,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 2. Initialize git, db and bot.
-    guild_list = list(map(convert_to_snowflake, guild_ids.split(',')))
-    approved_roles = approved_roles.split(',')
+    guild_list = [ int(id.strip(' ')) for id in guild_ids.split(',') ]
+    approved_roles = [ r.strip(' ') for r in approved_roles.split(',') ]
 
     db = Db(db_password, db_host, db_user, db_port, default_db_name)
     git_wrapper = GitWrapper(git_user, git_token, upstream_repo, forked_repo, local_repo_path)
