@@ -15,11 +15,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./main.py:/app/main.py
-      - ./db.py:/app/db.py
-      - ./bot.py:/app/bot.py
-      - ./schema.sql:/app/schema.sql
-      - ./slash_commands.py:/app/slash_commands.py
+      - ./app/:/app/app
     logging:
       driver: 'json-file'
       options:

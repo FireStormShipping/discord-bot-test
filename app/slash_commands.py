@@ -1,10 +1,19 @@
+import json
+import logging
+import os
+from pathlib import Path
 from typing import List, Literal, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from db import Db
+from .app_types import ERROR_ENTRY_EXISTS, ERROR_MARIA_DB
+from .dataset_encoder import JsonEncoder, TableEncoder
+from .db import Db
+from .git import GitWrapper
+
+logger = logging.getLogger("firestorm_bot")
 
 SENSITIVITY = Literal['S', 'E', 'Q']
 
@@ -13,14 +22,23 @@ class SlashCommands(commands.Cog):
     Commands that can be called as `/<command>`.
     """
 
-    def __init__(self, bot: commands.Bot, approved_roles: List[str], db: Db):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        approved_roles: List[str],
+        db: Db,
+        git_wrapper: GitWrapper
+    ):
         """
         :param bot: discord bot
         :param approved_roles: Roles that are allowed to approve prompts
+        :param db: DB instance
+        :param git_wrapper: Git wrapper for git operations
         """
         self.bot = bot
         self.approved_roles = approved_roles
         self.db = db
+        self.git = git_wrapper
 
     ###################################################################################
     @app_commands.command(
@@ -59,7 +77,12 @@ class SlashCommands(commands.Cog):
         flags = flags.strip()
         uid = self.db.add_prompt(pool, prompt, weight, sensitivity, flags)
         if uid < 0:
-            error_msg = "DB failed to add prompt."
+            if uid == ERROR_MARIA_DB:
+                error_msg = "DB failed to add prompt."
+            elif uid == ERROR_ENTRY_EXISTS:
+                error_msg = "Prompt already exists in this pool."
+            else:
+                error_msg = "Unknown DB error."
 
         embed = None
         if error_msg is not None:
@@ -189,7 +212,9 @@ class SlashCommands(commands.Cog):
             if self.db.delete_prompt(prompt_id, self._is_privileged_role(interaction)):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} deleted!")
                 return
-            await interaction.response.send_message(f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!")
+            await interaction.response.send_message(
+                f"❌ Unknown error, failed to delete Prompt ID #{prompt_id}!"
+            )
         except PermissionError:
             await interaction.response.send_message(
                 f"❌ Role is not allowed to delete approved prompt ID #{prompt_id}.",
@@ -210,7 +235,9 @@ class SlashCommands(commands.Cog):
             if self.db.approve_prompt(prompt_id):
                 await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} approved!")
             else:
-                await interaction.response.send_message(f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(
+                    f"❌ Unknown error, failed to approve Prompt ID #{prompt_id}!"
+                )
             return
         await interaction.response.send_message(
             f"❌ Role is not allowed to approve prompt ID #{prompt_id}.",
@@ -226,15 +253,24 @@ class SlashCommands(commands.Cog):
         prompt_id="The ID of the unapproved prompt to reject",
         reason="Reason for rejecting prompt"
     )
-    async def reject_prompt(self, interaction: discord.Interaction, prompt_id: int, reason: str) -> None:
+    async def reject_prompt(
+        self,
+        interaction: discord.Interaction,
+        prompt_id: int,
+        reason: str
+    ) -> None:
         """
         Allow only certain roles to reject the prompt.
         """
         if self._is_privileged_role(interaction):
             if self.db.reject_prompt(prompt_id, reason):
-                await interaction.response.send_message(f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}")
+                await interaction.response.send_message(
+                    f"✅ Prompt ID #{prompt_id} rejected, Reason: {reason}"
+                )
             else:
-                await interaction.response.send_message(f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!")
+                await interaction.response.send_message(
+                    f"❌ Unknown error, failed to reject Prompt ID #{prompt_id}!"
+                )
             return
         await interaction.response.send_message(
             f"❌ Role is not allowed to reject prompt ID #{prompt_id}.",
@@ -251,6 +287,8 @@ class SlashCommands(commands.Cog):
         """
         Given a pool name, show all the current entries in this pool.
         """
+        # ack msg first as pool size may be big.
+        await interaction.response.defer()
         pool = pool.strip()
         entries = self.db.show_pool(pool)
         if len(entries) == 0:
@@ -265,18 +303,21 @@ class SlashCommands(commands.Cog):
             msg += "1) Add a prompt with /add-prompt.\n"
             msg += "2) Someone with the correct role needs to /approve-prompt.\n"
             msg += "3) Now /show-pool will show the new pool with prompts."
-            await interaction.response.send_message(msg)
+            await interaction.followup.send(msg)
             return
-        output = f'[Pool: {pool}]\n'
-        for entry in entries:
-            output += f"#{entry.uid}, Pool: {entry.pool}, Prompt: {entry.prompt}, "
-            output += f"Weight: {entry.weight}, {entry.sensitivity}"
-            if entry.flags:
-                output += f", Flags: {entry.flags}\n"
-            else:
-                output += "\n"
-        # TODO: Return it as Pagination instead, as the pool might be very huge and exceed msg limit.
-        await interaction.response.send_message(output)
+        # Generate a temporary file to store the pool data
+        enc = TableEncoder()
+        pool_file = f"/tmp/tmp/{pool.replace(" ", "_")}.txt"
+        path = Path(pool_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            f.write(enc.get_header_pretty())
+            for entry in entries:
+                f.write(enc.encode(entry))
+        # Send the file as response
+        await interaction.followup.send(file=discord.File(pool_file))
+        # Delete the temporary file
+        os.remove(pool_file)
 
     ###################################################################################
     @app_commands.command(
@@ -341,6 +382,35 @@ class SlashCommands(commands.Cog):
 
     ###################################################################################
     @app_commands.command(
+        name="sync-dataset",
+        description="Sync the latest dataset from DB to Github.",
+    )
+    async def sync_dataset(self, interaction: discord.Interaction) -> None:
+        """
+        Grabs the latest dataset from the DB, convert them to JSON files,
+        and make a pull-request to firestorm-bingo.
+        """
+        if self._is_privileged_role(interaction):
+            # Syncing dataset takes a while, this will give us more time to
+            # respond to the request.
+            await interaction.response.defer()
+            try:
+                pr_url = self._sync_dataset_internal()
+                await interaction.followup.send(
+                    f"✅ Dataset successfully synced: {pr_url}"
+                )
+            except Exception as e: # pylint: disable=broad-exception-caught
+                await interaction.followup.send(
+                    f"❌ Error occurred: {e}"
+                )
+        else:
+            await interaction.response.send_message(
+                "❌ Role is not allowed to sync the dataset!",
+                ephemeral=True
+            )
+
+    ###################################################################################
+    @app_commands.command(
         name="help",
         description="How to use this bot.",
     )
@@ -368,3 +438,42 @@ class SlashCommands(commands.Cog):
             if role.name in self.approved_roles:
                 return True
         return False
+
+    def _sync_dataset_internal(self) -> str | Exception:
+        """Returns the URL for the PR."""
+        try:
+            # 1. Sync upstream to forked repo
+            logger.info("[sync-dataset-internal] Syncing upstream to fork.")
+            self.git.sync_forked_repo_with_upstream()
+            # 2. Clone fresh copy of the forked repo for sanity
+            logger.info("[sync-dataset-internal] Closing fresh copy of forked repo.")
+            repo = self.git.clone_fresh()
+            # 3. Get all avail pools
+            pools = self.db.get_pools()
+            local_folder = f"{self.git.get_local_path()}/app/datasets"
+            # 4. For each pool, process their entries.
+            logger.info("[sync-dataset-internal] Writing pools to files.")
+            for pool in pools:
+                entries = self.db.show_pool(pool)
+                pool_filename = f"{pool.replace(" ", "_")}.json"
+                entries_json = []
+                for entry in entries:
+                    enc = JsonEncoder()
+                    entries_json.append(enc.encode(entry))
+                final_json = {
+                    "entries": entries_json
+                }
+                # 5. Write pool to json file where the repo is locally.
+                fullpath = f"{local_folder}/{pool_filename}"
+                with open(fullpath, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(final_json, indent=2))
+            # 6. Commit the changes
+            logger.info("[sync-dataset-internal] Committing changes.")
+            self.git.commit_changes(repo)
+            # 7. Update the fork on remote
+            logger.info("[sync-dataset-internal] Pushing to fork.")
+            self.git.push_to_remote(repo)
+            # 8. Make Pull Request, return PR URL.
+            return self.git.make_pull_request()
+        except Exception as e: # pylint: disable=broad-exception-caught
+            raise e
