@@ -1,6 +1,13 @@
 # firestorm-discord-bot
 
-A bot for allowing users on a discord server to suggest prompts for the Bingo Dataset.
+A discord bot that has the following functionality:
+ - Allows users to suggest prompts for the Bingo Dataset.
+ - Ability for specific roles to approve prompts for the Bingo Dataset
+ - Ability for specific roles to sync the updated or new datasets to [firestorm-bingo](https://github.com/FireStormShipping/firestorm-bingo) easily, by constructing the JSON files required for the Pull Request.
+
+## Privacy
+
+This bot was designed with the intention of collecting and storing the bare minimal amount of information needed to provide new/updated datasets to the [firestorm-bingo app](https://github.com/FireStormShipping/firestorm-bingo). For more information on what is stored, please check out the [Privacy Policy](docs/privacy_policy.md).
 
 ## Deploying
 
