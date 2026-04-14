@@ -426,6 +426,8 @@ class SlashCommands(commands.Cog):
         output += "    Take note of the ID assigned to the prompt.\n"
         output += "4. Made a typo? Modify your prompt with `/modify-prompt` and select any field you want to change.\n"
         output += "    Use the prompt ID provided in Step 3.\n"
+        output += "    Note: Unapproved prompts can be modified by anyone.\n"
+        output += "    Approved prompts can only be modified by allowed roles.\n"
         output += "5. Wait for allowed roles to `/approve-prompt`.\n"
         output += "6. Tada! That's all!"
         await interaction.response.send_message(output, ephemeral=True)
