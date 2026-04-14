@@ -420,10 +420,14 @@ class SlashCommands(commands.Cog):
         """
         output = "**How to use this bot**\n"
         output += "1. Use `/list-pools` to view a list of available pools/datasets.\n"
+        output += "    If the pool you want is not listed, jump to Step 3, just input the desired pool name.\n"
         output += "2. To view current entries in a pool, use `/show-pool`.\n"
         output += "3. Use `/add-prompt` to add a new prompt to a pool.\n"
-        output += "4. Wait for allowed roles to `/approve-prompt`.\n"
-        output += "5. Tada! That's all!"
+        output += "    Take note of the ID assigned to the prompt.\n"
+        output += "4. Made a typo? Modify your prompt with `/modify-prompt` and select any field you want to change.\n"
+        output += "    Use the prompt ID provided in Step 3.\n"
+        output += "5. Wait for allowed roles to `/approve-prompt`.\n"
+        output += "6. Tada! That's all!"
         await interaction.response.send_message(output, ephemeral=True)
 
     ###################################################################################
